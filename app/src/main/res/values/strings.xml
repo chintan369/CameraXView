@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">CameraTestApp</string>
+    <string name="library1">Camera 1 - Current</string>
+    <string name="library1WM">Cam 1 - With Modification</string>
+    <string name="library3">Camera 3 - CameraX</string>
+    <string name="library2">Camera 2 - FotoApparat</string>
+    <string name="take_photo">Take Photo</string>
+</resources>
