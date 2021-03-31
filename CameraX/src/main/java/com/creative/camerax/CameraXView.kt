@@ -6,6 +6,7 @@ import android.content.Context
 import android.hardware.display.DisplayManager
 import android.net.Uri
 import android.os.Build
+import android.os.CountDownTimer
 import android.provider.MediaStore
 import android.util.AttributeSet
 import android.util.Log
@@ -62,6 +63,8 @@ class CameraXView @JvmOverloads constructor(
 
     private val displayManager by lazy { context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager }
 
+    private var videoStopTimer: CountDownTimer? = null
+
 
     init {
         addCameraPreviewView()
@@ -85,11 +88,17 @@ class CameraXView @JvmOverloads constructor(
         startCamera()
     }
 
+    fun getIsTakingVideo(): Boolean = currentCaptureMode == CaptureMode.VIDEO && isRecording
+
+    fun getFlash(): FlashMode = currentFlashMode
+
     fun setCaptureMode(mode: CaptureMode) {
         currentCaptureMode = mode
         this.onCameraControlListener?.onCaptureModeChanged(mode)
         startCamera()
     }
+
+    fun getCaptureMode(): CaptureMode = currentCaptureMode
 
     private val orientationEventListener by lazy {
         object : OrientationEventListener(context) {
@@ -177,7 +186,7 @@ class CameraXView @JvmOverloads constructor(
         clickPhoto(file)
     }
 
-    private fun startVideoRecording(file: File? = null) {
+    private fun startVideoRecording(file: File? = null, duration: Long = 0) {
         if (currentCaptureMode == CaptureMode.PICTURE) return
         val videoCapture = videoCapture ?: return
 
@@ -206,6 +215,10 @@ class CameraXView @JvmOverloads constructor(
             VideoCapture.OutputFileOptions.Builder(outFile)
         }.build()
 
+        if (duration >= MIN_REQUIRED_VIDEO_DURATION) {
+            setTimer(duration)
+        }
+
         videoCapture.startRecording(outputOptions,
             ContextCompat.getMainExecutor(context), object : VideoCapture.OnVideoSavedCallback {
                 override fun onVideoSaved(outputFileResults: VideoCapture.OutputFileResults) {
@@ -224,8 +237,27 @@ class CameraXView @JvmOverloads constructor(
 
             })
 
+        onMediaEventListener?.onVideoStarted()
+
         isRecording = true
 
+    }
+
+
+    private fun setTimer(duration: Long) {
+        videoStopTimer = object : CountDownTimer(
+            duration + MIN_REQUIRED_VIDEO_DURATION,
+            MIN_REQUIRED_VIDEO_DURATION
+        ) {
+            override fun onTick(p0: Long) = Unit
+
+            override fun onFinish() {
+                if (isRecording) {
+                    stopVideo()
+                }
+            }
+        }
+        videoStopTimer?.start()
     }
 
     fun startVideo() {
@@ -236,12 +268,22 @@ class CameraXView @JvmOverloads constructor(
         startVideoRecording(file)
     }
 
+    fun startVideo(duration: Long) {
+        startVideoRecording(duration = duration)
+    }
+
+    fun startVideo(file: File, duration: Long) {
+        startVideoRecording(file, duration)
+    }
+
     fun stopVideo() {
         if (currentCaptureMode == CaptureMode.PICTURE) return
         val videoCapture = videoCapture ?: return
         if (!isRecording) return
         videoCapture.stopRecording()
+        videoStopTimer?.cancel()
         isRecording = false
+        onMediaEventListener?.onVideoStopped()
     }
 
     private fun toggleCameraLens() {
@@ -259,6 +301,13 @@ class CameraXView @JvmOverloads constructor(
         }
         sendLensFacingEvent()
         startCamera()
+    }
+
+    fun getCameraFace(): CameraLens {
+        return when (currentLensFacing) {
+            CameraSelector.DEFAULT_FRONT_CAMERA -> CameraLens.FRONT
+            else -> CameraLens.BACK
+        }
     }
 
     private fun sendLensFacingEvent() {
@@ -439,6 +488,7 @@ class CameraXView @JvmOverloads constructor(
     companion object {
         private const val TAG = "CameraXView"
         private const val FILENAME_FORMAT = "yyyy-MM-dd-HH-mm-ss-SSS"
+        private const val MIN_REQUIRED_VIDEO_DURATION = 1000L
     }
 
 }
