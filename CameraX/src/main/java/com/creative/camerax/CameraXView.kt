@@ -67,9 +67,8 @@ class CameraXView @JvmOverloads constructor(
 
 
     init {
-        addCameraPreviewView()
         initializeObjects()
-        startCamera()
+        addCameraPreviewView()
     }
 
     /**
@@ -335,6 +334,9 @@ class CameraXView @JvmOverloads constructor(
         cameraPreviewView.layoutParams =
             LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
         addView(cameraPreviewView)
+        cameraPreviewView.post {
+            startCamera()
+        }
     }
 
     /**
@@ -370,7 +372,6 @@ class CameraXView @JvmOverloads constructor(
      * @return
      */
     private fun startCamera() {
-
         this.lifeCycleOwner?.let { lifecycleOwner ->
             cameraProviderFuture = ProcessCameraProvider.getInstance(context)
             cameraProviderFuture.addListener(Runnable {
