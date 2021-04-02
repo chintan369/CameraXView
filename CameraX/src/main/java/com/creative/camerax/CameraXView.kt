@@ -1,6 +1,5 @@
 package com.creative.camerax
 
-import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.Context
 import android.hardware.display.DisplayManager
@@ -10,12 +9,15 @@ import android.os.CountDownTimer
 import android.provider.MediaStore
 import android.util.AttributeSet
 import android.util.Log
-import android.view.OrientationEventListener
-import android.view.Surface
-import android.widget.FrameLayout
+import android.view.*
 import androidx.camera.core.*
-import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.CameraController
+import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
+import androidx.camera.view.video.OnVideoSavedCallback
+import androidx.camera.view.video.OutputFileOptions
+import androidx.camera.view.video.OutputFileResults
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -26,7 +28,6 @@ import com.creative.camerax.helper.CaptureMode
 import com.creative.camerax.helper.FlashMode
 import com.creative.camerax.interfaces.OnCameraControlListener
 import com.creative.camerax.interfaces.OnMediaEventListener
-import com.google.common.util.concurrent.ListenableFuture
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -37,14 +38,9 @@ typealias OnImageFrameProcessListener = (byteArray: ByteArray) -> Unit
 
 class CameraXView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
-) : FrameLayout(context, attrs, defStyleAttr) {
+) : ConstraintLayout(context, attrs, defStyleAttr) {
 
     private val cameraPreviewView = PreviewView(context)
-
-    private var imageCapture: ImageCapture? = null
-    private var videoCapture: VideoCapture? = null
-    private var preview: Preview? = null
-    private var imageAnalyzer: ImageAnalysis? = null
 
     private lateinit var outputDirectory: File
     private lateinit var cameraExecutor: ExecutorService
@@ -53,22 +49,22 @@ class CameraXView @JvmOverloads constructor(
     private var onMediaEventListener: OnMediaEventListener? = null
     private var onCameraControlListener: OnCameraControlListener? = null
 
-    private var currentLensFacing = CameraSelector.DEFAULT_BACK_CAMERA
+    private val backFacedCamera = CameraSelector.Builder().requireLensFacing(CameraSelector.LENS_FACING_BACK).build()
+    private val frontFacedCamera = CameraSelector.Builder().requireLensFacing(CameraSelector.LENS_FACING_FRONT).build()
+
+    private var currentLensFacing = backFacedCamera
     private var currentFlashMode = FlashMode.OFF
     private var currentCaptureMode = CaptureMode.PICTURE
 
-    private var isRecording = false
-    private var camera: Camera? = null
-    private lateinit var cameraProviderFuture: ListenableFuture<ProcessCameraProvider>
-
-    private val displayManager by lazy { context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager }
-
     private var videoStopTimer: CountDownTimer? = null
 
+    private var openCamera = false
+
+    private var cameraController: LifecycleCameraController? = null
 
     init {
-        initializeObjects()
         addCameraPreviewView()
+        initializeObjects()
     }
 
     /**
@@ -78,71 +74,79 @@ class CameraXView @JvmOverloads constructor(
      */
     fun toggleFacing() {
         toggleCameraLens()
-        startCamera()
+        Log.d(TAG, "Lens Switched to ${currentLensFacing.lensFacing}")
     }
 
     fun setFlash(mode: FlashMode) {
         currentFlashMode = mode
+        if (currentCaptureMode == CaptureMode.PICTURE) {
+            cameraController?.enableTorch(false)
+            when (currentFlashMode) {
+                FlashMode.AUTO -> {
+                    cameraController?.imageCaptureFlashMode = ImageCapture.FLASH_MODE_AUTO
+                }
+                FlashMode.ON, FlashMode.TORCH -> {
+                    cameraController?.imageCaptureFlashMode = ImageCapture.FLASH_MODE_ON
+                    currentFlashMode = FlashMode.ON
+                }
+                else -> {
+                    cameraController?.imageCaptureFlashMode = ImageCapture.FLASH_MODE_OFF
+                }
+            }
+        } else {
+            cameraController?.imageCaptureFlashMode = ImageCapture.FLASH_MODE_OFF
+            currentFlashMode = when (currentFlashMode) {
+                FlashMode.ON, FlashMode.TORCH -> {
+                    if (cameraController?.cameraInfo?.hasFlashUnit() == true) {
+                        cameraController?.enableTorch(true)
+                        FlashMode.TORCH
+                    } else {
+                        cameraController?.enableTorch(false)
+                        FlashMode.OFF
+                    }
+                }
+                else -> {
+                    cameraController?.enableTorch(false)
+                    FlashMode.OFF
+                }
+            }
+        }
         this.onCameraControlListener?.onFlashModeChanged(mode)
-        startCamera()
     }
 
-    fun getIsTakingVideo(): Boolean = currentCaptureMode == CaptureMode.VIDEO && isRecording
+    fun isRecordingVideo(): Boolean = cameraController?.isRecording == true
 
     fun getFlash(): FlashMode = currentFlashMode
 
     fun setCaptureMode(mode: CaptureMode) {
         currentCaptureMode = mode
+        when (currentCaptureMode) {
+            CaptureMode.VIDEO -> {
+                cameraController?.setEnabledUseCases(CameraController.VIDEO_CAPTURE)
+            }
+            else -> {
+                cameraController?.setEnabledUseCases(CameraController.IMAGE_CAPTURE or CameraController.IMAGE_ANALYSIS)
+                cameraController?.let {
+                    it.setImageAnalysisAnalyzer(cameraExecutor, FrameProcessor { byteArray ->
+                        this.onMediaEventListener?.onFrameDataReceived(byteArray)
+                    })
+                }
+
+            }
+        }
         this.onCameraControlListener?.onCaptureModeChanged(mode)
-        startCamera()
+        Log.d(TAG, "Mode Changed to ${mode.name}")
     }
 
     fun getCaptureMode(): CaptureMode = currentCaptureMode
 
-    private val orientationEventListener by lazy {
-        object : OrientationEventListener(context) {
-            @SuppressLint("UnsafeExperimentalUsageError")
-            override fun onOrientationChanged(orientation: Int) {
-                if (orientation == ORIENTATION_UNKNOWN) {
-                    return
-                }
-
-                val rotation = when (orientation) {
-                    in 45 until 135 -> Surface.ROTATION_270
-                    in 135 until 225 -> Surface.ROTATION_180
-                    in 225 until 315 -> Surface.ROTATION_90
-                    else -> Surface.ROTATION_0
-                }
-
-                if (!isRecording) {
-                    videoCapture?.setTargetRotation(rotation)
-                }
-                imageCapture?.targetRotation = rotation
-                imageAnalyzer?.targetRotation = rotation
-            }
-        }
-    }
-
-    private val displayListener = object : DisplayManager.DisplayListener {
-        override fun onDisplayAdded(p0: Int) = Unit
-
-        override fun onDisplayRemoved(p0: Int) = Unit
-
-        @SuppressLint("UnsafeExperimentalUsageError")
-        override fun onDisplayChanged(p0: Int) {
-            if (!isRecording) {
-                videoCapture?.setTargetRotation(this@CameraXView.display.rotation)
-            }
-            imageCapture?.targetRotation = this@CameraXView.display.rotation
-            imageAnalyzer?.targetRotation = this@CameraXView.display.rotation
-        }
-
-    }
-
     private fun clickPhoto(file: File? = null) {
         if (currentCaptureMode == CaptureMode.VIDEO) return
-        // Get a stable reference of the modifiable image capture use case
-        val imageCapture = imageCapture ?: return
+
+        if (cameraController?.isImageCaptureEnabled != true) {
+            onMediaEventListener?.onError(Exception("Set Capture mode to Picture"))
+            return
+        }
 
         val photoFile = file ?: File(
             outputDirectory,
@@ -159,7 +163,7 @@ class CameraXView @JvmOverloads constructor(
 
         // Set up image capture listener, which is triggered after photo has
         // been taken
-        imageCapture.takePicture(
+        cameraController?.takePicture(
             outputOptions,
             ContextCompat.getMainExecutor(context),
             object : ImageCapture.OnImageSavedCallback {
@@ -186,10 +190,14 @@ class CameraXView @JvmOverloads constructor(
     }
 
     private fun startVideoRecording(file: File? = null, duration: Long = 0) {
-        if (currentCaptureMode == CaptureMode.PICTURE) return
-        val videoCapture = videoCapture ?: return
+        if (currentCaptureMode == CaptureMode.PICTURE || cameraController?.isVideoCaptureEnabled != true) {
+            onMediaEventListener?.onError(Exception("Set Capture mode to Video"))
+            return
+        }
 
-        if (isRecording) return
+        if (isRecordingVideo()) {
+            stopVideo()
+        }
 
         val outFile = file ?: File(
             outputDirectory,
@@ -208,50 +216,45 @@ class CameraXView @JvmOverloads constructor(
             context.contentResolver.run {
                 val contentUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
 
-                VideoCapture.OutputFileOptions.Builder(this, contentUri, contentValues)
+                OutputFileOptions.builder(this, contentUri, contentValues)
             }
         } else {
-            VideoCapture.OutputFileOptions.Builder(outFile)
+            OutputFileOptions.builder(outFile)
         }.build()
 
         if (duration >= MIN_REQUIRED_VIDEO_DURATION) {
             setTimer(duration)
         }
 
-        videoCapture.startRecording(outputOptions,
-            ContextCompat.getMainExecutor(context), object : VideoCapture.OnVideoSavedCallback {
-                override fun onVideoSaved(outputFileResults: VideoCapture.OutputFileResults) {
-                    val uri = outputFileResults.savedUri ?: Uri.fromFile(outFile)
-                    onMediaEventListener?.onVideoTaken(uri)
-                    Log.d(TAG, "Saved Video at ${uri.toString()}")
+        cameraController?.startRecording(outputOptions, ContextCompat.getMainExecutor(context), object : OnVideoSavedCallback {
+            override fun onVideoSaved(outputFileResults: OutputFileResults) {
+                val uri = outputFileResults.savedUri ?: Uri.fromFile(outFile)
+                onMediaEventListener?.onVideoTaken(uri)
+                Log.d(TAG, "Saved Video at ${uri.toString()}")
+            }
+
+            override fun onError(videoCaptureError: Int, message: String, cause: Throwable?) {
+                Log.e(TAG, message, cause)
+                if (cause != null) {
+                    onMediaEventListener?.onError(cause)
                 }
 
-                override fun onError(videoCaptureError: Int, message: String, cause: Throwable?) {
-                    Log.e(TAG, message, cause)
-                    if (cause != null) {
-                        onMediaEventListener?.onError(cause)
-                    }
-
-                }
-
-            })
-
+            }
+        })
         onMediaEventListener?.onVideoStarted()
-
-        isRecording = true
 
     }
 
 
     private fun setTimer(duration: Long) {
         videoStopTimer = object : CountDownTimer(
-            duration + MIN_REQUIRED_VIDEO_DURATION,
+            duration,
             MIN_REQUIRED_VIDEO_DURATION
         ) {
             override fun onTick(p0: Long) = Unit
 
             override fun onFinish() {
-                if (isRecording) {
+                if (isRecordingVideo()) {
                     stopVideo()
                 }
             }
@@ -277,44 +280,46 @@ class CameraXView @JvmOverloads constructor(
 
     fun stopVideo() {
         if (currentCaptureMode == CaptureMode.PICTURE) return
-        val videoCapture = videoCapture ?: return
-        if (!isRecording) return
-        videoCapture.stopRecording()
+        if (!isRecordingVideo()) return
+        cameraController?.stopRecording()
         videoStopTimer?.cancel()
-        isRecording = false
         onMediaEventListener?.onVideoStopped()
     }
 
     private fun toggleCameraLens() {
         currentLensFacing = when (currentLensFacing) {
-            CameraSelector.DEFAULT_BACK_CAMERA -> CameraSelector.DEFAULT_FRONT_CAMERA
-            else -> CameraSelector.DEFAULT_BACK_CAMERA
+            backFacedCamera -> frontFacedCamera
+            else -> backFacedCamera
         }
         sendLensFacingEvent()
     }
 
     fun setCameraFace(lens: CameraLens) {
         currentLensFacing = when (lens) {
-            CameraLens.FRONT -> CameraSelector.DEFAULT_FRONT_CAMERA
-            else -> CameraSelector.DEFAULT_BACK_CAMERA
+            CameraLens.FRONT -> {
+                frontFacedCamera
+            }
+            else -> {
+                backFacedCamera
+            }
         }
+        cameraController?.cameraSelector = currentLensFacing
         sendLensFacingEvent()
-        startCamera()
     }
 
     fun getCameraFace(): CameraLens {
         return when (currentLensFacing) {
-            CameraSelector.DEFAULT_FRONT_CAMERA -> CameraLens.FRONT
+            frontFacedCamera -> CameraLens.FRONT
             else -> CameraLens.BACK
         }
     }
 
     private fun sendLensFacingEvent() {
         when (currentLensFacing) {
-            CameraSelector.DEFAULT_BACK_CAMERA -> this.onCameraControlListener?.onLensFacingChanged(
+            backFacedCamera -> this.onCameraControlListener?.onLensFacingChanged(
                 CameraLens.BACK
             )
-            CameraSelector.DEFAULT_FRONT_CAMERA -> this.onCameraControlListener?.onLensFacingChanged(
+            frontFacedCamera -> this.onCameraControlListener?.onLensFacingChanged(
                 CameraLens.FRONT
             )
         }
@@ -332,12 +337,10 @@ class CameraXView @JvmOverloads constructor(
      */
     private fun addCameraPreviewView() {
         cameraPreviewView.layoutParams =
-            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
-        addView(cameraPreviewView)
-        cameraPreviewView.post {
-            startCamera()
-        }
+            ConstraintLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        addView(cameraPreviewView, 0)
     }
+
 
     /**
      * Bind lifecycle owner to cameraXView
@@ -350,7 +353,12 @@ class CameraXView @JvmOverloads constructor(
         this.lifeCycleOwner?.let {
             it.lifecycle.addObserver(lifeCycleEventObserver)
         }
-        startCamera()
+        openCamera()
+    }
+
+    private fun openCamera() {
+        openCamera = true
+        startCameraWithCameraController()
     }
 
     /**
@@ -366,94 +374,27 @@ class CameraXView @JvmOverloads constructor(
         this.onCameraControlListener = onCameraControlListener
     }
 
-    /**
-     * Start camera and bind to preview
-     * @param
-     * @return
-     */
-    private fun startCamera() {
+    private fun startCameraWithCameraController() {
         this.lifeCycleOwner?.let { lifecycleOwner ->
-            cameraProviderFuture = ProcessCameraProvider.getInstance(context)
-            cameraProviderFuture.addListener(Runnable {
-                // Used to bind the lifecycle of cameras to the lifecycle owner
-                val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
 
-                // Preview
-                preview = Preview.Builder()
-                    //.setTargetRotation(cameraPreviewView.display.rotation)
-                    .build()
-                    .also {
-                        it.setSurfaceProvider(cameraPreviewView.surfaceProvider)
-                    }
+            cameraController = LifecycleCameraController(context)
 
-                if (currentCaptureMode == CaptureMode.VIDEO) {
-                    val videoCaptureConfig = VideoCapture.DEFAULT_CONFIG.config
+            cameraController?.let {
+                it.bindToLifecycle(lifecycleOwner)
 
-                    videoCapture = VideoCapture.Builder.fromConfig(videoCaptureConfig).build()
+                cameraPreviewView.controller = it
 
-                    videoCapture?.setTargetRotation(cameraPreviewView.display.rotation)
+                it.isPinchToZoomEnabled = true
+                it.isTapToFocusEnabled = true
 
-                } else {
-                    val imageCaptureBuilder = ImageCapture.Builder()
+                val cameraControlInitializer = it.initializationFuture
 
-                    when (currentFlashMode) {
-                        FlashMode.ON -> imageCaptureBuilder.setFlashMode(ImageCapture.FLASH_MODE_ON)
-                        FlashMode.AUTO -> imageCaptureBuilder.setFlashMode(ImageCapture.FLASH_MODE_AUTO)
-                        FlashMode.TORCH -> imageCaptureBuilder.setFlashMode(ImageCapture.FLASH_MODE_ON)
-                        else -> imageCaptureBuilder.setFlashMode(ImageCapture.FLASH_MODE_OFF)
-                    }
+                cameraControlInitializer.addListener(Runnable {
+                    onMediaEventListener?.onCameraStarted()
+                }, ContextCompat.getMainExecutor(context))
+            }
 
-                    imageCapture = imageCaptureBuilder.build()
-
-                    imageCapture?.targetRotation = cameraPreviewView.display.rotation
-                }
-
-                imageAnalyzer = ImageAnalysis.Builder()
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .build()
-                    .also {
-                        it.setAnalyzer(cameraExecutor, FrameProcessor { byteData ->
-                            this.onMediaEventListener?.onFrameDataReceived(byteData)
-                        })
-                    }
-
-                val hasRequiredCamera = hasRequiredCamera(cameraProvider)
-                if (!hasRequiredCamera) { //If the selected camera by user is not available
-                    toggleCameraLens() //Change the camera lens facing
-                    if (!hasRequiredCamera(cameraProvider)) return@Runnable // even if the camera is not available after changing the face of lens, then return as no camera in the device is available or camera is having some issue to not found
-                }
-
-                try {
-                    // Unbind use cases before rebinding
-                    cameraProvider.unbindAll()
-
-                    // Bind use cases to camera
-                    camera = if (currentCaptureMode == CaptureMode.VIDEO) {
-                        cameraProvider.bindToLifecycle(
-                            lifecycleOwner, currentLensFacing, preview, videoCapture
-                        )
-                    } else {
-                        cameraProvider.bindToLifecycle(
-                            lifecycleOwner, currentLensFacing, preview, imageCapture, imageAnalyzer
-                        )
-                    }
-
-                    if (camera?.cameraInfo?.hasFlashUnit() == true && currentFlashMode == FlashMode.TORCH) {
-                        camera?.cameraControl?.enableTorch(true)
-                    } else {
-                        camera?.cameraControl?.enableTorch(false)
-                    }
-
-                } catch (exc: Exception) {
-                    Log.e(TAG, "Use case binding failed", exc)
-                }
-
-            }, ContextCompat.getMainExecutor(context))
         }
-    }
-
-    private fun hasRequiredCamera(cameraProvider: ProcessCameraProvider): Boolean {
-        return cameraProvider.hasCamera(currentLensFacing)
     }
 
     /**
@@ -471,14 +412,6 @@ class CameraXView @JvmOverloads constructor(
 
     private val lifeCycleEventObserver = LifecycleEventObserver { _, event ->
         when (event) {
-            Lifecycle.Event.ON_START -> {
-                displayManager.registerDisplayListener(displayListener, null)
-                orientationEventListener.enable()
-            }
-            Lifecycle.Event.ON_STOP -> {
-                displayManager.unregisterDisplayListener(displayListener)
-                orientationEventListener.disable()
-            }
             Lifecycle.Event.ON_DESTROY -> {
                 cameraExecutor.shutdown()
             }

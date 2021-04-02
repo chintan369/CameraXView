@@ -20,6 +20,14 @@ class CameraXActivity : AppCompatActivity() {
                 Log.e("Photo Saved", file.toString())
             }
 
+            override fun onVideoStarted() {
+
+            }
+
+            override fun onVideoStopped() {
+
+            }
+
             override fun onVideoTaken(file: Uri) {
                 Log.e("Video Saved", file.toString())
             }

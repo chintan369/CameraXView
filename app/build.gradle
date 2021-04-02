@@ -59,6 +59,8 @@ dependencies {
     //Natario Library
     api 'com.otaliastudios:cameraview:2.7.0'
 
+    //implementation 'com.github.chintan369:CameraXView:1.0.2'
+
 
 
 
