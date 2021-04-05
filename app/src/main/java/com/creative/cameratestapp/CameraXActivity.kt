@@ -2,6 +2,8 @@ package com.creative.cameratestapp
 
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 import com.creative.camerax.helper.CaptureMode
@@ -40,13 +42,16 @@ class CameraXActivity : AppCompatActivity() {
                 Log.e("Camera Page", exception.message, exception)
             }
 
+            override fun onCameraStarted() {
+
+            }
+
         })
         cameraXView.setCaptureMode(CaptureMode.PICTURE)
         camera_capture_button.setOnClickListener { takePhoto() }
     }
 
     private fun takePhoto() {
-
         cameraXView.takePhoto()
     }
 

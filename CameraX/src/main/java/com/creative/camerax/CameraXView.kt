@@ -2,14 +2,20 @@ package com.creative.camerax
 
 import android.content.ContentValues
 import android.content.Context
-import android.hardware.display.DisplayManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.Image
 import android.net.Uri
 import android.os.Build
 import android.os.CountDownTimer
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import android.util.AttributeSet
 import android.util.Log
 import android.view.*
+import android.widget.FrameLayout
 import androidx.camera.core.*
 import androidx.camera.view.CameraController
 import androidx.camera.view.LifecycleCameraController
@@ -17,7 +23,6 @@ import androidx.camera.view.PreviewView
 import androidx.camera.view.video.OnVideoSavedCallback
 import androidx.camera.view.video.OutputFileOptions
 import androidx.camera.view.video.OutputFileResults
-import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -28,7 +33,10 @@ import com.creative.camerax.helper.CaptureMode
 import com.creative.camerax.helper.FlashMode
 import com.creative.camerax.interfaces.OnCameraControlListener
 import com.creative.camerax.interfaces.OnMediaEventListener
+import kotlinx.android.synthetic.main.layout_capture_mode.view.*
 import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.ExecutorService
@@ -38,9 +46,12 @@ typealias OnImageFrameProcessListener = (byteArray: ByteArray) -> Unit
 
 class CameraXView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
-) : ConstraintLayout(context, attrs, defStyleAttr) {
+) : FrameLayout(context, attrs, defStyleAttr) {
 
     private val cameraPreviewView = PreviewView(context)
+    private val layoutInflater =
+        context.getSystemService(Context.LAYOUT_INFLATER_SERVICE) as LayoutInflater
+    private lateinit var layoutSwitchingMode: View
 
     private lateinit var outputDirectory: File
     private lateinit var cameraExecutor: ExecutorService
@@ -49,8 +60,10 @@ class CameraXView @JvmOverloads constructor(
     private var onMediaEventListener: OnMediaEventListener? = null
     private var onCameraControlListener: OnCameraControlListener? = null
 
-    private val backFacedCamera = CameraSelector.Builder().requireLensFacing(CameraSelector.LENS_FACING_BACK).build()
-    private val frontFacedCamera = CameraSelector.Builder().requireLensFacing(CameraSelector.LENS_FACING_FRONT).build()
+    private val backFacedCamera =
+        CameraSelector.Builder().requireLensFacing(CameraSelector.LENS_FACING_BACK).build()
+    private val frontFacedCamera =
+        CameraSelector.Builder().requireLensFacing(CameraSelector.LENS_FACING_FRONT).build()
 
     private var currentLensFacing = backFacedCamera
     private var currentFlashMode = FlashMode.OFF
@@ -120,6 +133,7 @@ class CameraXView @JvmOverloads constructor(
 
     fun setCaptureMode(mode: CaptureMode) {
         currentCaptureMode = mode
+        showCaptureMode(true)
         when (currentCaptureMode) {
             CaptureMode.VIDEO -> {
                 cameraController?.setEnabledUseCases(CameraController.VIDEO_CAPTURE)
@@ -136,11 +150,28 @@ class CameraXView @JvmOverloads constructor(
         }
         this.onCameraControlListener?.onCaptureModeChanged(mode)
         Log.d(TAG, "Mode Changed to ${mode.name}")
+        Handler(Looper.getMainLooper()).postDelayed({
+            showCaptureMode(false)
+        }, 500L)
+
+    }
+
+    private fun showCaptureMode(show: Boolean = true) {
+        if (show) {
+            if (currentCaptureMode == CaptureMode.VIDEO) {
+                layoutSwitchingMode.imgSwitchMode.setImageResource(R.drawable.ic_mode_video)
+            } else {
+                layoutSwitchingMode.imgSwitchMode.setImageResource(R.drawable.ic_mode_camera)
+            }
+            layoutSwitchingMode.visibility = View.VISIBLE
+        } else {
+            layoutSwitchingMode.visibility = View.GONE
+        }
     }
 
     fun getCaptureMode(): CaptureMode = currentCaptureMode
 
-    private fun clickPhoto(file: File? = null) {
+    private fun clickPhoto(file: File? = null, snapshot: Boolean = false) {
         if (currentCaptureMode == CaptureMode.VIDEO) return
 
         if (cameraController?.isImageCaptureEnabled != true) {
@@ -155,30 +186,103 @@ class CameraXView @JvmOverloads constructor(
             ).format(System.currentTimeMillis()) + ".jpg"
         )
 
-
-        // Create output options object which contains file + metadata
-        val outputOptions = ImageCapture.OutputFileOptions
-            .Builder(photoFile)
-            .build()
-
         // Set up image capture listener, which is triggered after photo has
         // been taken
-        cameraController?.takePicture(
-            outputOptions,
-            ContextCompat.getMainExecutor(context),
-            object : ImageCapture.OnImageSavedCallback {
+
+        if (snapshot) {
+            cameraController?.takePicture(ContextCompat.getMainExecutor(context), object :
+                ImageCapture.OnImageCapturedCallback() {
+                override fun onCaptureSuccess(image: ImageProxy) {
+                    val imgProxy = image.image ?: return
+                    var bitmap = imgProxy.toBitmap()
+                    image.close()
+                    // Rotate the bitmap
+                    val rotationDegrees = image.imageInfo.rotationDegrees.toFloat()
+                    if (rotationDegrees != 0f) {
+                        val matrix = Matrix()
+                        matrix.postRotate(rotationDegrees)
+                        bitmap = Bitmap.createBitmap(
+                            bitmap,
+                            0,
+                            0,
+                            bitmap.width,
+                            bitmap.height,
+                            matrix,
+                            true
+                        )
+                    }
+
+                    val success = saveSnapShotToFile(bitmap, photoFile)
+
+                    if (success) {
+                        onMediaEventListener?.onPhotoTaken(Uri.fromFile(photoFile))
+                    }
+
+                }
+
                 override fun onError(exc: ImageCaptureException) {
+                    super.onError(exc)
                     this@CameraXView.onMediaEventListener?.onError(exc)
                     Log.e(TAG, "Photo capture failed: ${exc.message}", exc)
                 }
-
-                override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                    val savedUri = Uri.fromFile(photoFile)
-                    this@CameraXView.onMediaEventListener?.onPhotoTaken(savedUri)
-                    val msg = "Photo capture succeeded: $savedUri"
-                    Log.d(TAG, msg)
-                }
             })
+        } else {
+
+            // Create output options object which contains file + metadata
+            val outputOptions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, photoFile.name)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "image/${photoFile.extension}")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, photoFile.absolutePath)
+                }
+
+                context.contentResolver.run {
+                    val contentUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+
+                    ImageCapture.OutputFileOptions.Builder(this, contentUri, contentValues)
+                }
+            } else {
+                ImageCapture.OutputFileOptions.Builder(photoFile)
+            }.build()
+
+            cameraController?.takePicture(
+                outputOptions,
+                ContextCompat.getMainExecutor(context),
+                object : ImageCapture.OnImageSavedCallback {
+                    override fun onError(exc: ImageCaptureException) {
+                        this@CameraXView.onMediaEventListener?.onError(exc)
+                        Log.e(TAG, "Photo capture failed: ${exc.message}", exc)
+                    }
+
+                    override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                        val savedUri = output.savedUri ?: Uri.fromFile(photoFile)
+                        this@CameraXView.onMediaEventListener?.onPhotoTaken(savedUri)
+                        val msg = "Photo capture succeeded: $savedUri"
+                        Log.d(TAG, msg)
+                    }
+                })
+        }
+    }
+
+    private fun saveSnapShotToFile(bitmap: Bitmap, file: File): Boolean {
+        try {
+            FileOutputStream(file).use { out ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 80, out) // bmp is your Bitmap instance
+            }
+        } catch (e: IOException) {
+            onMediaEventListener?.onError(e)
+            e.printStackTrace()
+            return false
+        }
+        return true
+    }
+
+    fun Image.toBitmap(): Bitmap {
+        val buffer = planes[0].buffer
+        buffer.rewind()
+        val bytes = ByteArray(buffer.capacity())
+        buffer.get(bytes)
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
     }
 
     fun takePhoto() {
@@ -187,6 +291,14 @@ class CameraXView @JvmOverloads constructor(
 
     fun takePhoto(file: File) {
         clickPhoto(file)
+    }
+
+    fun takePhotoSnap() {
+        clickPhoto(snapshot = true)
+    }
+
+    fun takePhotoSnap(file: File) {
+        clickPhoto(file, true)
     }
 
     private fun startVideoRecording(file: File? = null, duration: Long = 0) {
@@ -226,21 +338,24 @@ class CameraXView @JvmOverloads constructor(
             setTimer(duration)
         }
 
-        cameraController?.startRecording(outputOptions, ContextCompat.getMainExecutor(context), object : OnVideoSavedCallback {
-            override fun onVideoSaved(outputFileResults: OutputFileResults) {
-                val uri = outputFileResults.savedUri ?: Uri.fromFile(outFile)
-                onMediaEventListener?.onVideoTaken(uri)
-                Log.d(TAG, "Saved Video at ${uri.toString()}")
-            }
-
-            override fun onError(videoCaptureError: Int, message: String, cause: Throwable?) {
-                Log.e(TAG, message, cause)
-                if (cause != null) {
-                    onMediaEventListener?.onError(cause)
+        cameraController?.startRecording(
+            outputOptions,
+            ContextCompat.getMainExecutor(context),
+            object : OnVideoSavedCallback {
+                override fun onVideoSaved(outputFileResults: OutputFileResults) {
+                    val uri = outputFileResults.savedUri ?: Uri.fromFile(outFile)
+                    onMediaEventListener?.onVideoTaken(uri)
+                    Log.d(TAG, "Saved Video at ${uri.toString()}")
                 }
 
-            }
-        })
+                override fun onError(videoCaptureError: Int, message: String, cause: Throwable?) {
+                    Log.e(TAG, message, cause)
+                    if (cause != null) {
+                        onMediaEventListener?.onError(cause)
+                    }
+
+                }
+            })
         onMediaEventListener?.onVideoStarted()
 
     }
@@ -337,8 +452,15 @@ class CameraXView @JvmOverloads constructor(
      */
     private fun addCameraPreviewView() {
         cameraPreviewView.layoutParams =
-            ConstraintLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
         addView(cameraPreviewView, 0)
+
+        layoutSwitchingMode = layoutInflater.inflate(R.layout.layout_capture_mode, null)
+
+        addView(layoutSwitchingMode)
     }
 
 
