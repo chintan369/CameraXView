@@ -3,6 +3,8 @@ package com.creative.camerax
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.media.Image
 import android.net.Uri
 import android.os.Build
 import android.os.CountDownTimer
@@ -300,6 +302,14 @@ class CameraXView @JvmOverloads constructor(
                     }
                 })
         }
+    }
+
+    private fun Image.toBitmap(): Bitmap {
+        val buffer = planes[0].buffer
+        buffer.rewind()
+        val bytes = ByteArray(buffer.capacity())
+        buffer.get(bytes)
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
     }
 
     private fun saveSnapShotToFile(bitmap: Bitmap, file: File): Boolean {

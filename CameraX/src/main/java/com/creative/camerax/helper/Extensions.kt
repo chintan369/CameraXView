@@ -31,11 +31,3 @@ fun Bitmap.rotateOn(rotationAngle: Float): Bitmap {
     }
     return rotatedBitmap
 }
-
-fun Image.toBitmap(): Bitmap {
-    val buffer = planes[0].buffer
-    buffer.rewind()
-    val bytes = ByteArray(buffer.capacity())
-    buffer.get(bytes)
-    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-}

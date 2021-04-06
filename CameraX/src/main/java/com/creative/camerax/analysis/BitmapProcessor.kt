@@ -17,4 +17,6 @@ class BitmapProcessor(val bitmapProcessListener: OnImageBitmapProcessListener) :
         bitmap = bitmap.rotateOn(image.imageInfo.rotationDegrees.toFloat())
         bitmapProcessListener(bitmap)
     }
+
+
 }
