@@ -215,7 +215,11 @@ class CameraXView @JvmOverloads constructor(
 
     fun getCaptureMode(): CaptureMode = currentCaptureMode
 
-    private fun clickPhoto(file: File? = null, snapshot: Boolean = false) {
+    private fun clickPhoto(
+        file: File? = null,
+        snapshot: Boolean = false,
+        requiredBitmap: Boolean = false
+    ) {
         if (currentCaptureMode == CaptureMode.VIDEO) return
 
         if (cameraController?.isImageCaptureEnabled != true) {
@@ -243,12 +247,15 @@ class CameraXView @JvmOverloads constructor(
 
                     bitmap = bitmap.rotateOn(image.imageInfo.rotationDegrees.toFloat())
 
-                    val success = saveSnapShotToFile(bitmap, photoFile)
+                    if (requiredBitmap) {
+                        onMediaEventListener?.onPhotoSnapTaken(bitmap)
+                    } else {
+                        val success = saveSnapShotToFile(bitmap, photoFile)
 
-                    if (success) {
-                        onMediaEventListener?.onPhotoTaken(Uri.fromFile(photoFile))
+                        if (success) {
+                            onMediaEventListener?.onPhotoSnapTaken(Uri.fromFile(photoFile))
+                        }
                     }
-
                 }
 
                 override fun onError(exc: ImageCaptureException) {
@@ -316,12 +323,12 @@ class CameraXView @JvmOverloads constructor(
         clickPhoto(file)
     }
 
-    fun takePhotoSnap() {
-        clickPhoto(snapshot = true)
+    fun takePhotoSnap(bitmap: Boolean = false) {
+        clickPhoto(snapshot = true, requiredBitmap = bitmap)
     }
 
     fun takePhotoSnap(file: File) {
-        clickPhoto(file, true)
+        clickPhoto(file, true, requiredBitmap = false)
     }
 
     private fun startVideoRecording(file: File? = null, duration: Long = 0) {

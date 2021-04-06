@@ -2,8 +2,6 @@ package com.creative.cameratestapp
 
 import android.net.Uri
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 import com.creative.camerax.helper.CaptureMode
@@ -22,24 +20,12 @@ class CameraXActivity : AppCompatActivity() {
                 Log.e("Photo Saved", file.toString())
             }
 
-            override fun onVideoStarted() {
-
-            }
-
-            override fun onVideoStopped() {
-
-            }
-
             override fun onVideoTaken(file: Uri) {
                 Log.e("Video Saved", file.toString())
             }
 
             override fun onError(exception: Throwable) {
                 Log.e("Camera Page", exception.message, exception)
-            }
-
-            override fun onCameraStarted() {
-
             }
 
         })
