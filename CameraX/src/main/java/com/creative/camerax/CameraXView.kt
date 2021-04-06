@@ -3,9 +3,6 @@ package com.creative.camerax
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Matrix
-import android.media.Image
 import android.net.Uri
 import android.os.Build
 import android.os.CountDownTimer
@@ -16,6 +13,7 @@ import android.util.AttributeSet
 import android.util.Log
 import android.view.*
 import android.widget.FrameLayout
+import androidx.annotation.NonNull
 import androidx.camera.core.*
 import androidx.camera.view.CameraController
 import androidx.camera.view.LifecycleCameraController
@@ -27,10 +25,9 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
-import com.creative.camerax.analysis.FrameProcessor
-import com.creative.camerax.helper.CameraLens
-import com.creative.camerax.helper.CaptureMode
-import com.creative.camerax.helper.FlashMode
+import com.creative.camerax.analysis.BitmapProcessor
+import com.creative.camerax.helper.*
+import com.creative.camerax.interfaces.OnBitmapProcessing
 import com.creative.camerax.interfaces.OnCameraControlListener
 import com.creative.camerax.interfaces.OnMediaEventListener
 import kotlinx.android.synthetic.main.layout_capture_mode.view.*
@@ -41,8 +38,6 @@ import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-
-typealias OnImageFrameProcessListener = (byteArray: ByteArray) -> Unit
 
 class CameraXView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
@@ -68,6 +63,11 @@ class CameraXView @JvmOverloads constructor(
     private var currentLensFacing = backFacedCamera
     private var currentFlashMode = FlashMode.OFF
     private var currentCaptureMode = CaptureMode.PICTURE
+
+    var isBitmapProcessorEnabled: Boolean = false
+        private set
+
+    private var onBitmapProcessing: MutableList<OnBitmapProcessing> = mutableListOf()
 
     private var videoStopTimer: CountDownTimer? = null
 
@@ -134,18 +134,15 @@ class CameraXView @JvmOverloads constructor(
     fun setCaptureMode(mode: CaptureMode) {
         currentCaptureMode = mode
         showCaptureMode(true)
-        when (currentCaptureMode) {
+        isBitmapProcessorEnabled = when (currentCaptureMode) {
             CaptureMode.VIDEO -> {
                 cameraController?.setEnabledUseCases(CameraController.VIDEO_CAPTURE)
+                false
             }
             else -> {
                 cameraController?.setEnabledUseCases(CameraController.IMAGE_CAPTURE or CameraController.IMAGE_ANALYSIS)
-                cameraController?.let {
-                    it.setImageAnalysisAnalyzer(cameraExecutor, FrameProcessor { byteArray ->
-                        this.onMediaEventListener?.onFrameDataReceived(byteArray)
-                    })
-                }
-
+                checkIfProcessorNeededToEnableOrDisable()
+                true
             }
         }
         this.onCameraControlListener?.onCaptureModeChanged(mode)
@@ -167,6 +164,53 @@ class CameraXView @JvmOverloads constructor(
         } else {
             layoutSwitchingMode.visibility = View.GONE
         }
+    }
+
+    fun addBitmapProcessor(@NonNull processor: OnBitmapProcessing) {
+        if (this.onBitmapProcessing.contains(processor)) return
+
+        this.onBitmapProcessing.add(processor)
+
+        checkIfProcessorNeededToEnableOrDisable()
+    }
+
+    private fun checkIfProcessorNeededToEnableOrDisable() {
+        if (isBitmapProcessorEnabled && this.onBitmapProcessing.isEmpty()) {
+            cameraController?.clearImageAnalysisAnalyzer()
+            isBitmapProcessorEnabled = false
+            return
+        }
+
+        if (isBitmapProcessorEnabled && this.onBitmapProcessing.isNotEmpty()) return
+
+        if (!isBitmapProcessorEnabled && this.onBitmapProcessing.isNotEmpty() && currentCaptureMode == CaptureMode.VIDEO) return
+
+        if (!isBitmapProcessorEnabled) {
+            cameraController?.imageAnalysisBackpressureStrategy =
+                ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST
+            cameraController?.let {
+                it.setImageAnalysisAnalyzer(
+                    cameraExecutor, BitmapProcessor { bitmap ->
+                        this@CameraXView.onBitmapProcessing.forEach { processor ->
+                            processor.onBitmapProcessed(bitmap)
+                        }
+                    })
+            }
+            isBitmapProcessorEnabled = true
+        }
+    }
+
+    fun removeBitmapProcessor(@NonNull processor: OnBitmapProcessing) {
+        if (!this.onBitmapProcessing.contains(processor)) return
+
+        this.onBitmapProcessing.remove(processor)
+
+        checkIfProcessorNeededToEnableOrDisable()
+    }
+
+    fun clearBitmapProcessors() {
+        this.onBitmapProcessing.clear()
+        checkIfProcessorNeededToEnableOrDisable()
     }
 
     fun getCaptureMode(): CaptureMode = currentCaptureMode
@@ -196,21 +240,8 @@ class CameraXView @JvmOverloads constructor(
                     val imgProxy = image.image ?: return
                     var bitmap = imgProxy.toBitmap()
                     image.close()
-                    // Rotate the bitmap
-                    val rotationDegrees = image.imageInfo.rotationDegrees.toFloat()
-                    if (rotationDegrees != 0f) {
-                        val matrix = Matrix()
-                        matrix.postRotate(rotationDegrees)
-                        bitmap = Bitmap.createBitmap(
-                            bitmap,
-                            0,
-                            0,
-                            bitmap.width,
-                            bitmap.height,
-                            matrix,
-                            true
-                        )
-                    }
+
+                    bitmap = bitmap.rotateOn(image.imageInfo.rotationDegrees.toFloat())
 
                     val success = saveSnapShotToFile(bitmap, photoFile)
 
@@ -275,14 +306,6 @@ class CameraXView @JvmOverloads constructor(
             return false
         }
         return true
-    }
-
-    fun Image.toBitmap(): Bitmap {
-        val buffer = planes[0].buffer
-        buffer.rewind()
-        val bytes = ByteArray(buffer.capacity())
-        buffer.get(bytes)
-        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
     }
 
     fun takePhoto() {

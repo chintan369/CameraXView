@@ -34,10 +34,6 @@ class CameraXActivity : AppCompatActivity() {
                 Log.e("Video Saved", file.toString())
             }
 
-            override fun onFrameDataReceived(data: ByteArray) {
-
-            }
-
             override fun onError(exception: Throwable) {
                 Log.e("Camera Page", exception.message, exception)
             }
