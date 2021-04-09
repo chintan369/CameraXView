@@ -17,15 +17,39 @@
         app:layout_constraintTop_toTopOf="parent" />
 
     <Button
-        android:id="@+id/camera_capture_button"
-        android:layout_width="200dp"
+        android:id="@+id/btnPhoto"
+        android:layout_width="wrap_content"
         android:layout_height="50dp"
         android:layout_gravity="bottom|center"
         android:layout_marginBottom="50dp"
         android:elevation="2dp"
-        android:text="@string/take_photo"
+        android:text="Photo"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/btnSnapBitmap"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <Button
+        android:id="@+id/btnSnapBitmap"
+        android:layout_width="wrap_content"
+        android:layout_height="50dp"
+        android:layout_gravity="bottom|center"
+        android:layout_marginBottom="50dp"
+        android:elevation="2dp"
+        android:text="Snap Bitmap"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toEndOf="@id/btnPhoto"
+        app:layout_constraintEnd_toStartOf="@id/btnSnapPhoto"/>
+
+    <Button
+        android:id="@+id/btnSnapPhoto"
+        android:layout_width="wrap_content"
+        android:layout_height="50dp"
+        android:layout_gravity="bottom|center"
+        android:layout_marginBottom="50dp"
+        android:elevation="2dp"
+        android:text="Snap Pic"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
+        app:layout_constraintStart_toEndOf="@id/btnSnapBitmap"/>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

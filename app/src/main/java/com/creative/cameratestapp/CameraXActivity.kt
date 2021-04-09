@@ -1,5 +1,6 @@
 package com.creative.cameratestapp
 
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -28,13 +29,18 @@ class CameraXActivity : AppCompatActivity() {
                 Log.e("Camera Page", exception.message, exception)
             }
 
+            override fun onPhotoSnapTaken(bitmap: Bitmap) {
+                super.onPhotoSnapTaken(bitmap)
+            }
+
+            override fun onPhotoSnapTaken(file: Uri) {
+                Log.e("Photo Saved", file.toString())
+            }
         })
         cameraXView.setCaptureMode(CaptureMode.PICTURE)
-        camera_capture_button.setOnClickListener { takePhoto() }
-    }
-
-    private fun takePhoto() {
-        cameraXView.takePhoto()
+        btnSnapBitmap.setOnClickListener { cameraXView.takePhotoSnap(true) }
+        btnPhoto.setOnClickListener { cameraXView.takePhoto() }
+        btnSnapPhoto.setOnClickListener { cameraXView.takePhotoSnap() }
     }
 
 }

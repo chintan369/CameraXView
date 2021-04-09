@@ -1,9 +1,8 @@
 package com.creative.camerax.helper
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Matrix
-import android.media.Image
+import android.util.Log
 import java.nio.ByteBuffer
 
 fun ByteBuffer.toByteArray(): ByteArray {
@@ -13,7 +12,7 @@ fun ByteBuffer.toByteArray(): ByteArray {
     return data // Return the byte array
 }
 
-fun Bitmap.rotateOn(rotationAngle: Float): Bitmap {
+fun Bitmap.rotateOn(rotationAngle: Float, scale: Boolean = true): Bitmap {
     // Rotate the bitmap
     var rotatedBitmap = this
     if (rotationAngle != 0f) {
@@ -29,5 +28,21 @@ fun Bitmap.rotateOn(rotationAngle: Float): Bitmap {
             true
         )
     }
-    return rotatedBitmap
+    return if (scale) rotatedBitmap.getResizedBitmap() else rotatedBitmap
+}
+
+/**
+ * reduces the size of the image
+ * @return
+ */
+private fun Bitmap.getResizedBitmap(): Bitmap {
+    val width = this.width
+    val height = this.height
+
+    val newWidth = width / 4
+    val newHeight = height / 4
+
+    Log.e("Size scaled to", "W:$width => $newWidth, H:$height => $newHeight")
+
+    return Bitmap.createScaledBitmap(this, newWidth, newHeight, true)
 }

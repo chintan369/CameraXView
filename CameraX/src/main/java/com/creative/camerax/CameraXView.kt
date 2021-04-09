@@ -33,13 +33,19 @@ import com.creative.camerax.interfaces.OnBitmapProcessing
 import com.creative.camerax.interfaces.OnCameraControlListener
 import com.creative.camerax.interfaces.OnMediaEventListener
 import kotlinx.android.synthetic.main.layout_capture_mode.view.*
+import kotlinx.coroutines.*
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.lang.Runnable
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.concurrent.Executor
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlin.coroutines.suspendCoroutine
 
 class CameraXView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
@@ -49,6 +55,8 @@ class CameraXView @JvmOverloads constructor(
     private val layoutInflater =
         context.getSystemService(Context.LAYOUT_INFLATER_SERVICE) as LayoutInflater
     private lateinit var layoutSwitchingMode: View
+
+    private val coroutineScope = CoroutineScope(Dispatchers.Main)
 
     private lateinit var outputDirectory: File
     private lateinit var cameraExecutor: ExecutorService
@@ -240,32 +248,41 @@ class CameraXView @JvmOverloads constructor(
         // been taken
 
         if (snapshot) {
-            cameraController?.takePicture(ContextCompat.getMainExecutor(context), object :
-                ImageCapture.OnImageCapturedCallback() {
-                override fun onCaptureSuccess(image: ImageProxy) {
-                    val imgProxy = image.image ?: return
-                    var bitmap = imgProxy.toBitmap()
-                    image.close()
-
-                    bitmap = bitmap.rotateOn(image.imageInfo.rotationDegrees.toFloat())
-
+            coroutineScope.launch {
+                var startCapture = System.nanoTime()
+                var endCapture = 0L
+                val results =
+                    async(coroutineContext) {
+                        Log.e("Taking Pic", "At ${System.currentTimeMillis()}")
+                        val pic =
+                            cameraController?.takePicture(ContextCompat.getMainExecutor(context))
+                        endCapture = System.nanoTime()
+                        Log.e(
+                            "yeeeeet",
+                            "Finished photo capture in ${(endCapture - startCapture) / 1_000_000}ms"
+                        ) // <-- this is where I'm measuring ~450 to ~650 ms
+                        pic
+                    }.await()
+                results?.let { bitmap ->
                     if (requiredBitmap) {
                         onMediaEventListener?.onPhotoSnapTaken(bitmap)
                     } else {
-                        val success = saveSnapShotToFile(bitmap, photoFile)
+                        withContext(Dispatchers.IO) {
+                            startCapture = System.nanoTime()
+                            val success = saveSnapShotToFile(bitmap, photoFile)
+                            endCapture = System.nanoTime()
+                            Log.e(
+                                "yeeeeet",
+                                "Finished photo saving in ${(endCapture - startCapture) / 1_000_000}ms"
+                            )
+                            if (success) {
 
-                        if (success) {
-                            onMediaEventListener?.onPhotoSnapTaken(Uri.fromFile(photoFile))
+                                onMediaEventListener?.onPhotoSnapTaken(Uri.fromFile(photoFile))
+                            }
                         }
                     }
                 }
-
-                override fun onError(exc: ImageCaptureException) {
-                    super.onError(exc)
-                    this@CameraXView.onMediaEventListener?.onError(exc)
-                    Log.e(TAG, "Photo capture failed: ${exc.message}", exc)
-                }
-            })
+            }
         } else {
 
             // Create output options object which contains file + metadata
@@ -279,12 +296,17 @@ class CameraXView @JvmOverloads constructor(
                 context.contentResolver.run {
                     val contentUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
 
-                    ImageCapture.OutputFileOptions.Builder(this, contentUri, contentValues)
+                    ImageCapture.OutputFileOptions.Builder(
+                        context.contentResolver,
+                        contentUri,
+                        contentValues
+                    )
                 }
             } else {
                 ImageCapture.OutputFileOptions.Builder(photoFile)
             }.build()
 
+            Log.e("Taking Pic", "At ${System.currentTimeMillis()}")
             cameraController?.takePicture(
                 outputOptions,
                 ContextCompat.getMainExecutor(context),
@@ -295,6 +317,7 @@ class CameraXView @JvmOverloads constructor(
                     }
 
                     override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                        Log.e("Took Pic", "At ${System.currentTimeMillis()}")
                         val savedUri = output.savedUri ?: Uri.fromFile(photoFile)
                         this@CameraXView.onMediaEventListener?.onPhotoTaken(savedUri)
                         val msg = "Photo capture succeeded: $savedUri"
@@ -303,6 +326,27 @@ class CameraXView @JvmOverloads constructor(
                 })
         }
     }
+
+    private suspend inline fun CameraController.takePicture(executor: Executor) =
+        suspendCoroutine<Bitmap> { cont ->
+            this.takePicture(executor, object : ImageCapture.OnImageCapturedCallback() {
+                override fun onCaptureSuccess(image: ImageProxy) {
+                    super.onCaptureSuccess(image)
+                    val imgProxy = image.image ?: return
+                    var bitmap = imgProxy.toBitmap()
+                    image.close()
+                    val rotationAngle = image.imageInfo.rotationDegrees.toFloat()
+                    bitmap = bitmap.rotateOn(rotationAngle)
+                    cont.resume(bitmap)
+                }
+
+                override fun onError(exception: ImageCaptureException) {
+                    super.onError(exception)
+                    onMediaEventListener?.onError(exception)
+                    cont.resumeWithException(exception)
+                }
+            })
+        }
 
     private fun Image.toBitmap(): Bitmap {
         val buffer = planes[0].buffer
@@ -315,7 +359,7 @@ class CameraXView @JvmOverloads constructor(
     private fun saveSnapShotToFile(bitmap: Bitmap, file: File): Boolean {
         try {
             FileOutputStream(file).use { out ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 80, out) // bmp is your Bitmap instance
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 80, out)
             }
         } catch (e: IOException) {
             onMediaEventListener?.onError(e)
@@ -446,6 +490,7 @@ class CameraXView @JvmOverloads constructor(
             backFacedCamera -> frontFacedCamera
             else -> backFacedCamera
         }
+        setCameraFace(getCameraFace())
         sendLensFacingEvent()
     }
 
@@ -539,6 +584,8 @@ class CameraXView @JvmOverloads constructor(
     private fun startCameraWithCameraController() {
         this.lifeCycleOwner?.let { lifecycleOwner ->
 
+            cameraPreviewView.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+
             cameraController = LifecycleCameraController(context)
 
             cameraController?.let {
@@ -565,11 +612,9 @@ class CameraXView @JvmOverloads constructor(
      * @return
      */
     private fun getOutputDirectory(): File {
-        val mediaDir = context.externalCacheDirs.firstOrNull()?.let {
+        return context.cacheDir?.let {
             File(it, "CameraX").apply { mkdirs() }
-        }
-        return if (mediaDir != null && mediaDir.exists())
-            mediaDir else context.cacheDir
+        } ?: context.cacheDir
     }
 
     private val lifeCycleEventObserver = LifecycleEventObserver { _, event ->
