@@ -286,7 +286,7 @@ class CameraXView @JvmOverloads constructor(
         } else {
 
             // Create output options object which contains file + metadata
-            val outputOptions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val outputOptions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !isAppSpecificDirectory(photoFile.absolutePath)) {
                 val contentValues = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, photoFile.name)
                     put(MediaStore.MediaColumns.MIME_TYPE, "image/${photoFile.extension}")
@@ -294,7 +294,7 @@ class CameraXView @JvmOverloads constructor(
                 }
 
                 context.contentResolver.run {
-                    val contentUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                    val contentUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
 
                     ImageCapture.OutputFileOptions.Builder(
                         context.contentResolver,
@@ -402,21 +402,22 @@ class CameraXView @JvmOverloads constructor(
             ).format(System.currentTimeMillis()) + ".mp4"
         )
 
-        val outputOptions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val contentValues = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, outFile.name)
-                put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
-                put(MediaStore.MediaColumns.RELATIVE_PATH, outFile.absolutePath)
-            }
+        val outputOptions =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !isAppSpecificDirectory(outFile.absolutePath)) {
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, outFile.name)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, outFile.absolutePath)
+                }
 
-            context.contentResolver.run {
-                val contentUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                context.contentResolver.run {
+                    val contentUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
 
-                OutputFileOptions.builder(this, contentUri, contentValues)
-            }
-        } else {
-            OutputFileOptions.builder(outFile)
-        }.build()
+                    OutputFileOptions.builder(this, contentUri, contentValues)
+                }
+            } else {
+                OutputFileOptions.builder(outFile)
+            }.build()
 
         if (duration >= MIN_REQUIRED_VIDEO_DURATION) {
             setTimer(duration)
@@ -615,6 +616,11 @@ class CameraXView @JvmOverloads constructor(
         return context.cacheDir?.let {
             File(it, "CameraX").apply { mkdirs() }
         } ?: context.cacheDir
+    }
+
+    private fun isAppSpecificDirectory(filePath: String): Boolean {
+        if (filePath.contains(context.filesDir.toString()) || filePath.contains(context.cacheDir.toString())) return true
+        return false
     }
 
     private val lifeCycleEventObserver = LifecycleEventObserver { _, event ->
