@@ -19,6 +19,7 @@
         android:theme="@style/Theme.CameraTestApp">
         <activity android:name=".CameraXActivity"
             android:screenOrientation="portrait"
+            android:exported="true"
             android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"
             />
         <activity android:name=".NatarioActivity2" />

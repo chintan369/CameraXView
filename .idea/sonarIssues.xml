@@ -178,12 +178,32 @@
             <set />
           </value>
         </entry>
+        <entry key="$PROJECT_DIR$/../Visualogyx/app/src/main/java/com/visualogyx/app/activity/VisualogyxBaseActivity.java">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/../Visualogyx/app/src/main/java/com/visualogyx/app/database/RealmRepository.java">
+          <value>
+            <set />
+          </value>
+        </entry>
         <entry key="$PROJECT_DIR$/../Visualogyx/app/src/main/java/com/visualogyx/app/home/HomeActivity.kt">
           <value>
             <set />
           </value>
         </entry>
         <entry key="$PROJECT_DIR$/../Visualogyx/app/src/main/java/com/visualogyx/app/home/MainMenuFragment.kt">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/../Visualogyx/app/src/main/java/com/visualogyx/app/utility/FunctionHelper.kt">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/../Visualogyx/app/src/main/java/com/visualogyx/app/utility/VisualogyxUtils.java">
           <value>
             <set />
           </value>

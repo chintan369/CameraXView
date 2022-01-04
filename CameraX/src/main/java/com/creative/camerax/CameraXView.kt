@@ -1,9 +1,12 @@
 package com.creative.camerax
 
+import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Matrix
 import android.media.Image
 import android.net.Uri
 import android.os.Build
@@ -20,6 +23,7 @@ import androidx.camera.core.*
 import androidx.camera.view.CameraController
 import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
+import androidx.camera.view.video.Metadata
 import androidx.camera.view.video.OnVideoSavedCallback
 import androidx.camera.view.video.OutputFileOptions
 import androidx.camera.view.video.OutputFileResults
@@ -47,6 +51,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 
+@SuppressLint("UnsafeOptInUsageError")
 class CameraXView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
 ) : FrameLayout(context, attrs, defStyleAttr) {
@@ -95,6 +100,7 @@ class CameraXView @JvmOverloads constructor(
      * @param
      * @return
      */
+    @SuppressLint("RestrictedApi")
     fun toggleFacing() {
         toggleCameraLens()
         Log.d(TAG, "Lens Switched to ${currentLensFacing.lensFacing}")
@@ -141,6 +147,7 @@ class CameraXView @JvmOverloads constructor(
 
     fun getFlash(): FlashMode = currentFlashMode
 
+    @SuppressLint("UnsafeOptInUsageError")
     fun setCaptureMode(mode: CaptureMode) {
         currentCaptureMode = mode
         showCaptureMode(true)
@@ -265,7 +272,7 @@ class CameraXView @JvmOverloads constructor(
                     }.await()
                 results?.let { bitmap ->
                     if (requiredBitmap) {
-                        onMediaEventListener?.onPhotoSnapTaken(bitmap)
+                        onMediaEventListener?.onPhotoSnapTaken(if(currentLensFacing == frontFacedCamera) getFlippedBitmap(bitmap) else bitmap)
                     } else {
                         withContext(Dispatchers.IO) {
                             startCapture = System.nanoTime()
@@ -286,7 +293,7 @@ class CameraXView @JvmOverloads constructor(
         } else {
 
             // Create output options object which contains file + metadata
-            val outputOptions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !isAppSpecificDirectory(photoFile.absolutePath)) {
+            val outputOptionsBuilder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !isAppSpecificDirectory(photoFile.absolutePath)) {
                 val contentValues = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, photoFile.name)
                     put(MediaStore.MediaColumns.MIME_TYPE, "image/${photoFile.extension}")
@@ -304,7 +311,15 @@ class CameraXView @JvmOverloads constructor(
                 }
             } else {
                 ImageCapture.OutputFileOptions.Builder(photoFile)
-            }.build()
+            }
+
+            if(currentLensFacing == frontFacedCamera){
+                val metadata = ImageCapture.Metadata()
+                metadata.isReversedHorizontal = false
+                outputOptionsBuilder.setMetadata(metadata)
+            }
+
+            val outputOptions = outputOptionsBuilder.build()
 
             Log.e("Taking Pic", "At ${System.currentTimeMillis()}")
             cameraController?.takePicture(
@@ -327,6 +342,7 @@ class CameraXView @JvmOverloads constructor(
         }
     }
 
+    @SuppressLint("UnsafeOptInUsageError")
     private suspend inline fun CameraController.takePicture(executor: Executor) =
         suspendCoroutine<Bitmap> { cont ->
             this.takePicture(executor, object : ImageCapture.OnImageCapturedCallback() {
@@ -337,6 +353,9 @@ class CameraXView @JvmOverloads constructor(
                     image.close()
                     val rotationAngle = image.imageInfo.rotationDegrees.toFloat()
                     bitmap = bitmap.rotateOn(rotationAngle)
+                    if(currentLensFacing == frontFacedCamera){
+                        bitmap = getFlippedBitmap(bitmap)
+                    }
                     cont.resume(bitmap)
                 }
 
@@ -356,10 +375,21 @@ class CameraXView @JvmOverloads constructor(
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
     }
 
+    private fun getFlippedBitmap(bitmap: Bitmap): Bitmap{
+        return Bitmap.createBitmap(bitmap,0,0,bitmap.width,bitmap.height,getMirrorMatrix(),true)
+    }
+
+    private fun getMirrorMatrix(): Matrix{
+        val matrix = Matrix()
+        matrix.preScale(-1.0f,1.0f)
+        return matrix
+    }
+
     private fun saveSnapShotToFile(bitmap: Bitmap, file: File): Boolean {
+        val finalBitmap = if(currentLensFacing == frontFacedCamera) getFlippedBitmap(bitmap) else bitmap
         try {
             FileOutputStream(file).use { out ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 80, out)
+                finalBitmap.compress(Bitmap.CompressFormat.JPEG, 80, out)
             }
         } catch (e: IOException) {
             onMediaEventListener?.onError(e)
@@ -385,6 +415,7 @@ class CameraXView @JvmOverloads constructor(
         clickPhoto(file, true, requiredBitmap = false)
     }
 
+    @SuppressLint("UnsafeOptInUsageError")
     private fun startVideoRecording(file: File? = null, duration: Long = 0) {
         if (currentCaptureMode == CaptureMode.PICTURE || cameraController?.isVideoCaptureEnabled != true) {
             onMediaEventListener?.onError(Exception("Set Capture mode to Video"))
@@ -478,6 +509,7 @@ class CameraXView @JvmOverloads constructor(
         startVideoRecording(file, duration)
     }
 
+    @SuppressLint("UnsafeOptInUsageError")
     fun stopVideo() {
         if (currentCaptureMode == CaptureMode.PICTURE) return
         if (!isRecordingVideo()) return

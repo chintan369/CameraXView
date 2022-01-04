@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
+import com.creative.camerax.helper.CameraLens
 import com.creative.camerax.helper.CaptureMode
 import com.creative.camerax.interfaces.OnMediaEventListener
 import kotlinx.android.synthetic.main.activity_camerax.*
@@ -38,6 +39,7 @@ class CameraXActivity : AppCompatActivity() {
             }
         })
         cameraXView.setCaptureMode(CaptureMode.PICTURE)
+        cameraXView.setCameraFace(CameraLens.FRONT)
         btnSnapBitmap.setOnClickListener { cameraXView.takePhotoSnap(true) }
         btnPhoto.setOnClickListener { cameraXView.takePhoto() }
         btnSnapPhoto.setOnClickListener { cameraXView.takePhotoSnap() }
