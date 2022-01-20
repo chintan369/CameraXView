@@ -313,11 +313,11 @@ class CameraXView @JvmOverloads constructor(
                 ImageCapture.OutputFileOptions.Builder(photoFile)
             }
 
-            if(currentLensFacing == frontFacedCamera){
+            //if(currentLensFacing == frontFacedCamera){
                 val metadata = ImageCapture.Metadata()
                 metadata.isReversedHorizontal = false
                 outputOptionsBuilder.setMetadata(metadata)
-            }
+            //}
 
             val outputOptions = outputOptionsBuilder.build()
 
@@ -528,16 +528,27 @@ class CameraXView @JvmOverloads constructor(
     }
 
     fun setCameraFace(lens: CameraLens) {
-        currentLensFacing = when (lens) {
-            CameraLens.FRONT -> {
-                frontFacedCamera
+        val isRequiredCameraAvailable = checkForCameraAvailability(lens)
+        if(isRequiredCameraAvailable){
+            currentLensFacing = when (lens) {
+                CameraLens.FRONT -> {
+                    frontFacedCamera
+                }
+                else -> {
+                    backFacedCamera
+                }
             }
-            else -> {
-                backFacedCamera
-            }
+            cameraController?.cameraSelector = currentLensFacing
         }
-        cameraController?.cameraSelector = currentLensFacing
         sendLensFacingEvent()
+    }
+
+    private fun checkForCameraAvailability(lens: CameraLens): Boolean {
+        return if(lens == CameraLens.FRONT){
+            cameraController?.hasCamera(frontFacedCamera) == true
+        } else {
+            cameraController?.hasCamera(backFacedCamera) == true
+        }
     }
 
     fun getCameraFace(): CameraLens {

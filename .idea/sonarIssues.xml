@@ -173,7 +173,57 @@
             <set />
           </value>
         </entry>
+        <entry key="$PROJECT_DIR$/../Instacount/countingapp-library-android/instacountAndroid/src/main/java/com/cameracountmodule/activity/CameraActivity.kt">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/../Instacount/countingapp-library-android/instacountAndroid/src/main/java/com/cameracountmodule/activity/InstacountBaseActivity.java">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/../Instacount/countingapp-library-android/instacountAndroid/src/main/java/com/cameracountmodule/drawing/DrawingPad.kt">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/../Instacount/countingapp-library-android/instacountAndroid/src/main/java/com/cameracountmodule/manager/GoogleMapManager.java">
+          <value>
+            <set />
+          </value>
+        </entry>
         <entry key="$PROJECT_DIR$/../Visualogyx/app/build.gradle">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/../Visualogyx/app/src/main/AndroidManifest.xml">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/../Visualogyx/app/src/main/java/com/visualogyx/app/activity/CreateJobActivity.java">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/../Visualogyx/app/src/main/java/com/visualogyx/app/activity/FormBuilderActivity.kt">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/../Visualogyx/app/src/main/java/com/visualogyx/app/activity/HistoryActivity.java">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/../Visualogyx/app/src/main/java/com/visualogyx/app/activity/SearchJobActivity.java">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/../Visualogyx/app/src/main/java/com/visualogyx/app/activity/UniversalSearchActivity.java">
           <value>
             <set />
           </value>
@@ -183,7 +233,27 @@
             <set />
           </value>
         </entry>
+        <entry key="$PROJECT_DIR$/../Visualogyx/app/src/main/java/com/visualogyx/app/adapter/PendingItemAdapter.java">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/../Visualogyx/app/src/main/java/com/visualogyx/app/adapter/TaskDetailsAdapter.java">
+          <value>
+            <set />
+          </value>
+        </entry>
         <entry key="$PROJECT_DIR$/../Visualogyx/app/src/main/java/com/visualogyx/app/database/RealmRepository.java">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/../Visualogyx/app/src/main/java/com/visualogyx/app/fragments/ContactsFragment.java">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/../Visualogyx/app/src/main/java/com/visualogyx/app/fragments/home/HomeFragment.java">
           <value>
             <set />
           </value>
@@ -198,12 +268,32 @@
             <set />
           </value>
         </entry>
+        <entry key="$PROJECT_DIR$/../Visualogyx/app/src/main/java/com/visualogyx/app/interfaces/JobInterface.java">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/../Visualogyx/app/src/main/java/com/visualogyx/app/offlinesync/MiddlewareReactiveProxy.java">
+          <value>
+            <set />
+          </value>
+        </entry>
         <entry key="$PROJECT_DIR$/../Visualogyx/app/src/main/java/com/visualogyx/app/utility/FunctionHelper.kt">
           <value>
             <set />
           </value>
         </entry>
         <entry key="$PROJECT_DIR$/../Visualogyx/app/src/main/java/com/visualogyx/app/utility/VisualogyxUtils.java">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/../Visualogyx/app/src/main/java/cordova/plugins/IonicNativeInteraction.kt">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/../Visualogyx/app/src/main/res/layout/activity_add_existing_inspection.xml">
           <value>
             <set />
           </value>
@@ -218,7 +308,22 @@
             <set />
           </value>
         </entry>
+        <entry key="$PROJECT_DIR$/../Visualogyx/app/src/main/res/layout/activity_select_project.xml">
+          <value>
+            <set />
+          </value>
+        </entry>
         <entry key="$PROJECT_DIR$/../Visualogyx/app/src/main/res/layout/fragment_team_list.xml">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/../Visualogyx/app/src/test/java/com/visualogyx/app/activity/FormBuilderActivityTest.java">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/../Visualogyx/app/src/test/java/com/visualogyx/app/database/RealmRepositoryTest.java">
           <value>
             <set />
           </value>
